@@ -104,12 +104,9 @@
      * 
      * @returns {boolean} true if a property was deleted
      * 
-     * @throws {Error} target must be an object.
+     * @throws {Error} target is not an object.
      */
     utils.rdelete = function (target, path, options) {
-        if (typeof target !== "object") {
-            throw new Error("target must be an object");
-        }
         options = options || {};
         var separator = options.separator || ".";
         var prefix = options.prefix || "";
@@ -148,12 +145,15 @@
      * @returns {boolean}
      */
     utils.equals = function (a, b) {
-        if (a === b) {
+        if (a === b) { // optimisation
             return true;
-        } else if (typeof a === "object" && typeof b === "object") {
-            if (a === null || b === null) {
-                return false;
-            } else if (Array.isArray(a) && Array.isArray(b)) {
+        }
+        let type = utils.typeof(a);
+        if (type !== utils.typeof(b)) {
+            return false;
+        }
+        switch (type) {
+            case "array":
                 if (a.length !== b.length) {
                     return false;
                 }
@@ -163,11 +163,11 @@
                     }
                 }
                 return true;
-            } else if (a instanceof Date && b instanceof Date) {
-                return a.getTime() === b.getTime();
-            } else if (a instanceof RegExp && b instanceof RegExp) {
+            case "regex":
                 return a.toString() === b.toString();
-            } else {
+            case "date":
+                return a.getTime() === b.getTime();
+            case "object":
                 var props = [];
                 for (var prop in a) {
                     if (a.hasOwnProperty(prop)) {
@@ -185,9 +185,9 @@
                     }
                 }
                 return true;
-            }
+            default:
+                return false;
         }
-        return false;
     };
 
 
@@ -216,31 +216,48 @@
      * @returns {*}
      */
     utils.clone = function (target) {
-        if (typeof target !== "object") {
-            return target;
-        } else if (Array.isArray(target)) {
-            return target.map(utils.clone);
-        } else if (target instanceof RegExp) {
-            return new RegExp(target);
-        } else if (target instanceof Date) {
-            return new Date(target);
-        } else if (typeof target.clone === "function") {
-            return target.clone();
-        } else {
-            var cpy = Object.create(Object.getPrototypeOf(target));
-            for (var prop in target) {
-                if (target.hasOwnProperty(prop)) {
-                    cpy[prop] = utils.clone(target[prop]);
+        let type = utils.typeof(target);
+        switch (type) {
+            case "array":
+                return target.map(utils.clone);
+            case "regex":
+                return new RegExp(target);
+            case "date":
+                return new Date(target);
+            case "object":
+                if (typeof target.clone === "function") {
+                    return target.clone();
+                } else {
+                    var cpy = Object.create(Object.getPrototypeOf(target));
+                    for (var prop in target) {
+                        if (target.hasOwnProperty(prop)) {
+                            cpy[prop] = utils.clone(target[prop]);
+                        }
+                    }
+                    return cpy;
                 }
-            }
-            return cpy;
+            default:
+                return target;
         }
     };
-    
+
     /**
      * Determines the detailed type of a js entity.
      * 
-     * Supported types: object, null, array, regex, date, and the other js primitive types as returned by the `typeof` operator
+     * Supported types:
+     *  * function
+     *  * string
+     *  * number
+     *  * boolean
+     *  * undefined
+     *  ---
+     *  * null
+     *  * array
+     *  * regex
+     *  * date
+     *  * object 
+     *  ---
+     *  * ? # whatever else the `typeof` operator may return (which is plateform dependent)
      * 
      * @param {*} target
      * @returns {string}
